@@ -1,0 +1,723 @@
+PROCEDURE prc_billinvoice (
+      in_invoice_date                       DATE,
+      in_invoice_datetime                   DATE,
+      in_module_no_fk                       NUMBER,
+      in_patient_no_fk                      NUMBER,
+      in_patient_code                       VARCHAR2,
+      in_admission_no_pk                    NUMBER,
+      in_admission_code                     VARCHAR2,
+      in_appointment_no_fk                  NUMBER,
+      in_item_count                         NUMBER,
+      in_ITEM_NO_FK                         PKG_GLOBAL.array_num,
+      in_ITEM_NAME                          PKG_GLOBAL.array_varchar,
+      in_ITEMTYPE_NO_FK                     PKG_GLOBAL.array_num,
+      in_ITEM_QTY                           PKG_GLOBAL.array_num,
+      in_ITEM_RATE                          PKG_GLOBAL.array_num,
+      in_item_disc_percent                  PKG_GLOBAL.array_num,
+      in_item_disc_amount                   PKG_GLOBAL.array_num,
+      in_ITEM_VAT                           PKG_GLOBAL.array_num,
+      in_URGENT_FEE                         PKG_GLOBAL.array_num,
+      in_SERVICE_CHARGE                     PKG_GLOBAL.array_num,
+      in_REPORT_DELIVERY_DATE               PKG_GLOBAL.array_varchar,
+      in_REPORT_DELIVERY_TIME               PKG_GLOBAL.array_varchar,
+      in_DELIVERY_STATUS_LOOKUP_NO_FK       PKG_GLOBAL.array_num,
+      in_PACKAGE_ITEM_IND                   PKG_GLOBAL.array_num,
+      in_item_level_remarks                 PKG_GLOBAL.array_varchar,
+      out_invoice_no                    OUT NUMBER,
+      out_invoice_id                    OUT VARCHAR2,
+      out_error                         OUT VARCHAR2)
+   IS
+      l_INVOICE_NO_PK             NUMBER;
+      l_item_count                NUMBER := 1;
+      l_INVOICE_CODE              VARCHAR2 (100);
+      l_item_SU_NO_FK             NUMBER;
+      l_INVOICEDTL_NO_PK          NUMBER;
+
+      l_ledger_no_pk              NUMBER;
+      l_ledger_code               VARCHAR2 (100);
+      l_item_paid_amt             NUMBER;
+      l_item_paid_percent         NUMBER;
+      l_item_disc_amt             NUMBER;
+      l_item_disc_percent         NUMBER;
+
+
+      l_total_sales_amt           NUMBER;
+
+      l_total_payment_amt         NUMBER;
+
+      l_total_discount_amt        NUMBER;
+
+      l_patient_no_pk             NUMBER;
+      l_patient_code              VARCHAR2 (50);
+
+      l_item_type                 VARCHAR2 (50);
+      l_rabinvoicedtl_no_pk       NUMBER;
+     
+   BEGIN
+      SELECT SEQ_INVOICE_NO_PK.NEXTVAL INTO l_INVOICE_NO_PK FROM DUAL;
+
+
+      l_INVOICE_CODE := l_INVOICE_NO_PK;
+
+
+      l_patient_no_pk := in_patient_no_fk;
+      l_patient_code := in_patient_code;
+
+      --l_patient_no_pk, l_patient_code
+
+      -- PATIENT REGISTRATION --Start
+
+      IF in_PATIENT_NO_FK IS NULL
+      THEN
+         SELECT SYSC_REG_PATIENT_NO_PK_SEQ.NEXTVAL
+           INTO l_patient_no_pk
+           FROM DUAL;
+
+
+         l_patient_code :=
+               'P'
+            || TO_CHAR (SYSDATE, 'yymmdd')
+            || LPAD (l_patient_no_pk, 6, '0');
+
+
+         INSERT INTO PATN_REGISTRATION (PATIENT_NO_PK,
+                                        PATIENT_CODE,
+                                        REG_DATE,
+                                        SALUTATION,
+                                        PATIENT_NAME,
+                                        FIRST_NAME,
+                                        LAST_NAME,
+                                        GENDER_TXT,
+                                        MARITAL_STATUS_TXT,
+                                        BLOOD_GROUP,
+                                        AGE_DD,
+                                        AGE_MM,
+                                        AGE_YY,
+                                        AGE,
+                                        DOB,
+                                        PATIENT_TYPE,
+                                        PHONE_TNT,
+                                        MOBILE1,
+                                        EMAIL,
+                                        PRESENT_ADDR,
+                                        STATUS,
+                                        AU_ENTRY_BY,
+                                        AU_ENTRY_AT,
+                                        AU_ENTRY_SESSION,
+                                        AU_ENTRY_HOSPITAL_PK_NO)
+              VALUES (l_patient_no_pk,
+                      l_patient_code,
+                      SYSDATE,
+                      NULL,
+                      in_customer_name,
+                      in_customer_name,
+                      NULL,
+                      in_GENDER_TXT,
+                      in_MARITAL_STATUS_TXT,
+                      in_BLOOD_GROUP,
+                      in_AGE_DD,
+                      in_AGE_MM,
+                      in_AGE_YY,
+                      in_AGE,
+                      in_DOB,
+                      in_pat_type_lookup_no_fk,
+                      in_PHONE_MOBILE,
+                      in_PHONE_MOBILE,
+                      NULL,
+                      in_customer_addr,
+                      1,
+                      in_AU_ENTRY_BY,
+                      SYSDATE,
+                      in_AU_ENTRY_SESSION,
+                      in_AU_ENTRY_HOSPITAL_PK_NO);
+      END IF;
+
+
+
+      -- PATIENT REGISTRATION --END
+
+      SELECT REG.PATIENT_CODE,
+             REG.AGE,
+             REG.AGE_DD,
+             REG.AGE_MM,
+             REG.AGE_YY,
+             REG.PRESENT_ADDR || ' ' || REG.PRESENT_DISTRICT,
+             REG.SALUTATION || ' ' || REG.PATIENT_NAME
+        INTO l_patient_code,
+             l_age,
+             l_age_dd,
+             l_age_mm,
+             l_age_yy,
+             l_customer_addr,
+             l_customer_name
+        FROM PATN_REGISTRATION REG
+       WHERE PATIENT_NO_PK = l_patient_no_pk;
+
+
+      INSERT INTO FINC_INVOICEMST (INVOICE_NO_PK,
+                                   INVOICE_CODE,
+                                   INVOICE_DATE,
+                                   INVOICE_DATETIME,
+                                   MODULE_NO_FK,
+                                   PATIENT_NO_FK,
+                                   PATIENT_CODE,
+                                   ADMISSION_NO_PK,
+                                   ADMISSION_CODE,
+                                   PRESCRIPTION_NO_FK,
+                                   PERSON_NO_FK,
+                                   FIRST_REF_DOC_PERSON_NO_FK,
+                                   SECOND_REF_DOC_PERSON_NO_FK,
+                                   REPORT_DELIVARY_DATE,
+                                   REPORT_DELIVARY_DATETIME,
+                                   COUNTER_SU_NO_FK,
+                                   COR_CLIENT_NO_FK,
+                                   COR_CLIENT_CARD_NO_FK,
+                                   RELATION_LOOKUP_NO_FK,
+                                   REF_INVOICE_NO_FK,
+                                   PAT_TYPE_LOOKUP_NO_FK,
+                                   AGE,
+                                   AGE_DD,
+                                   AGE_MM,
+                                   AGE_YY,
+                                   CUSTOMER_ADDR,
+                                   CUSTOMER_NAME,
+                                   INVOICE_REMARKS,
+                                   URGENT_FEE,
+                                   APPOINT_SERVICE_NO_FK,
+                                   STATUS,
+                                   AU_ENTRY_BY,
+                                   AU_ENTRY_AT,
+                                   AU_ENTRY_SESSION,
+                                   AU_ENTRY_HOSPITAL_PK_NO)
+           VALUES (l_invoice_no_pk,
+                   l_invoice_code,
+                   NVL (in_invoice_date, SYSDATE),
+                   NVL (in_invoice_datetime, SYSDATE),
+                   in_module_no_fk,
+                   l_patient_no_pk,
+                   l_patient_code,                                          --
+                   in_admission_no_pk,
+                   in_admission_code,
+                   in_prescription_no_fk,
+                   NVL (in_doc_person_no_fk, 0),
+                   in_first_ref_doc_person_no_fk,
+                   in_second_ref_doc_person_no_fk,
+                   in_report_delivary_date,
+                   in_report_delivary_datetime,
+                   in_counter_su_no_fk,
+                   in_cor_client_no_fk,
+                   in_cor_client_card_no_fk,
+                   in_relation_lookup_no_fk,
+                   in_ref_invoice_no_fk,
+                   in_pat_type_lookup_no_fk,
+                   l_age,                                                   --
+                   l_age_dd,                                                --
+                   l_age_mm,                                                --
+                   l_age_yy,                                                --
+                   l_customer_addr,                                         --
+                   l_customer_name,                                         --
+                   in_invoice_remarks,
+                   in_urgent_fee_total,
+                   in_appointment_no_fk,
+                   1,
+                   in_au_entry_by,
+                   SYSDATE,
+                   in_au_entry_session,
+                   in_au_entry_hospital_pk_no);
+
+
+      SELECT LEDGER_NO_PK_SEQ.NEXTVAL INTO l_ledger_no_pk FROM DUAL;
+
+      l_ledger_code := l_ledger_no_pk;
+
+
+
+      INSERT INTO FINC_LEDGERMST (LEDGER_NO_PK,
+                                  LEDGER_CODE,
+                                  LEDGER_DATE,
+                                  LEDGER_DATETIME,
+                                  INVOICE_NO_FK,
+                                  MODULE_NO_FK,
+                                  PATIENT_NO_FK,
+                                  ADMISSION_NO_FK,
+                                  PRESCRIPTION_NO_FK,
+                                  COUNTER_SU_NO_FK,
+                                  LEDGER_AMT_SALES,
+                                  LEDGER_AMT_PAYMENT,
+                                  LEDGER_AMT_DISCOUNT,
+                                  LEDGER_AMT_VAT,
+                                  URGENT_FEE,
+                                  SERVICE_CHARGE,
+                                  COR_CLIENT_NO_FK,
+                                  PAY_MODE,
+                                  PAY_CQCC_NUMBER,
+                                  PAY_CQCC_DEDUCT_PERCENT,
+                                  PAY_BANK_NAME,
+                                  PAY_REMARKS,
+                                  GIVEN_AMT,
+                                  DISC_TYPE_LOOKUP_NO_FK,
+                                  DISC_REMARKS,
+                                  DISC_AMT_BY_DOC,
+                                  DISC_AMT_BY_DOC_NO_FK,
+                                  DISC_AMT_BY_HOSP,
+                                  DISC_AMT_BY_HOSP_AUTH_BY,
+                                  TRN_TYPE_CODE,
+                                  ITEM_LEVEL_DIST_ADJ_AMT,
+                                  STATUS,
+                                  AU_ENTRY_BY,
+                                  AU_ENTRY_AT,
+                                  AU_ENTRY_SESSION,
+                                  AU_ENTRY_HOSPITAL_PK_NO)
+           VALUES (l_ledger_no_pk,
+                   l_ledger_code,
+                   NVL (in_invoice_date, SYSDATE),
+                   SYSDATE,
+                   l_invoice_no_pk,
+                   in_module_no_fk,
+                   l_patient_no_pk,
+                   in_admission_no_pk,
+                   in_prescription_no_fk,
+                   in_counter_su_no_fk,
+                   0,
+                   0,
+                   0,
+                   0,
+                   in_urgent_fee_total,
+                   0,
+                   in_cor_client_no_fk,
+                   NULL,
+                   NULL,
+                   NULL,
+                   NULL,
+                   NULL,
+                   0,
+                   NULL,
+                   NULL,
+                   NULL,
+                   NULL,
+                   NULL,
+                   NULL,
+                   'SALES',
+                   0,
+                   1,
+                   in_au_entry_by,
+                   SYSDATE,
+                   in_au_entry_session,
+                   in_au_entry_hospital_pk_no);
+
+
+      IF NVL (in_item_count, 0) > 0
+      THEN
+         FOR REC IN 1 .. in_item_count
+         LOOP
+            l_item_count := rec;
+
+            DBMS_OUTPUT.put_line (
+               '01 ' || in_item_count || ' ' || l_item_count || ' ' || REC);
+
+            --    INSERT INTO ERR_TRACKING (SL, ERR_TIME, ERR_DESC, ERR_TEXT)
+            --    VALUES ( in_ITEM_RATE(l_item_count),sysdate,in_ITEM_VAT(l_item_count),'test');
+
+
+            SELECT SERVICEUNIT_NO_FK
+              INTO l_item_SU_NO_FK
+              FROM sysc_serviceitem
+             WHERE     item_no_pk = in_item_no_fk (l_item_count)
+                   AND AU_ENTRY_HOSPITAL_PK_NO = in_au_entry_hospital_pk_no;
+
+            SELECT SEQ_INVOICEDTL_NO_PK.NEXTVAL
+              INTO l_invoicedtl_no_pk
+              FROM DUAL;
+
+            INSERT INTO FINC_INVOICEDTL (INVOICEDTL_NO_PK,
+                                         INVOICE_NO_FK,
+                                         ITEM_NO_FK,
+                                         ITEM_NAME,
+                                         ITEMTYPE_NO_FK,
+                                         ITEM_QTY,
+                                         ITEM_RATE,
+                                         ITEM_VAT,
+                                         URGENT_FEE,
+                                         SERVICE_CHARGE,
+                                         REPORT_DELIVERY_DATE,
+                                         REPORT_DELIVERY_TIME,
+                                         DELIVERY_STATUS_LOOKUP_NO_FK,
+                                         PACKAGE_ITEM_IND,
+                                         SU_NO_FK,
+                                         STATUS,
+                                         AU_ENTRY_BY,
+                                         AU_ENTRY_AT,
+                                         AU_ENTRY_SESSION,
+                                         AU_ENTRY_HOSPITAL_PK_NO)
+                    VALUES (
+                              l_invoicedtl_no_pk,
+                              l_invoice_no_pk,
+                              in_ITEM_NO_FK (l_item_count),
+                              in_ITEM_NAME (l_item_count),
+                              in_ITEMTYPE_NO_FK (l_item_count),
+                              in_ITEM_QTY (l_item_count),
+                              in_ITEM_RATE (l_item_count),
+                              in_ITEM_VAT (l_item_count),
+                              in_URGENT_FEE (l_item_count),
+                              in_SERVICE_CHARGE (l_item_count),
+                              TO_DATE (
+                                 in_REPORT_DELIVERY_DATE (l_item_count),
+                                 'dd-mm-yyyy'),
+                              TO_DATE (
+                                 in_REPORT_DELIVERY_TIME (l_item_count),
+                                 'dd-mm-yyyy'),
+                              in_DELIVERY_STATUS_LOOKUP_NO_FK (l_item_count),
+                              in_PACKAGE_ITEM_IND (l_item_count),
+                              l_item_SU_NO_FK,
+                              1,
+                              in_au_entry_by,
+                              SYSDATE,
+                              in_au_entry_session,
+                              in_au_entry_hospital_pk_no);
+
+
+            -- Below values need to set later on---Start
+            l_purchase_rate := 0;
+            l_trn_type_no_fk := NULL;
+            l_ledgerdtl_amt_sales := NULL;
+            l_ledgerdtl_amt_payment := NULL;
+            l_ledgerdtl_amt_discount := NULL;
+
+            l_disc_amt_by_doc := NULL;
+            l_disc_amt_by_hosp := NULL;
+            l_ref_disc_amt := NULL;
+            l_item_level_dist_adj_amt := NULL;
+            l_item_paid_amt := NULL;
+            l_item_paid_percent := NULL;
+            l_item_disc_amt := NULL;
+            l_item_disc_percent := NULL;
+
+            -- Below values need to set later on---END
+
+            SELECT ledgerdtl_no_pk_SEQ.NEXTVAL
+              INTO l_ledgerdtl_no_pk
+              FROM DUAL;
+
+
+            SELECT PURCHASE_PRICE,
+                   ITEM_TYPE,
+                   SAM_NO_FK,
+                   NO_SAM_COLLECTION
+              INTO l_purchase_rate,
+                   l_item_type,
+                   l_sam_no_fk,
+                   l_sc_tot_no_of_coll
+              FROM sysc_serviceitem si
+             WHERE     item_no_pk = in_item_no_fk (l_item_count)
+                   AND AU_ENTRY_HOSPITAL_PK_NO = in_au_entry_hospital_pk_no;
+
+            SELECT trn_type_no_pk
+              INTO l_trn_type_no_fk
+              FROM FINC_TRNTYPE
+             WHERE     trn_type_code = 'SALES'
+                   AND AU_ENTRY_HOSPITAL_PK_NO = in_au_entry_hospital_pk_no;
+
+            l_ledgerdtl_amt_sales :=
+                 (  NVL (in_item_rate (l_item_count), 0)
+                  + NVL (in_item_vat (l_item_count), 0))
+               * NVL (in_item_qty (l_item_count), 0);
+
+            l_total_sales_amt :=
+               NVL (l_total_sales_amt, 0) + l_ledgerdtl_amt_sales;
+            l_invoicedtl_no_pk := NULL;
+
+
+
+            INSERT INTO FINC_LEDGERDTL (LEDGERDTL_NO_PK,
+                                        LEDGERDTL_DATE,
+                                        LEDGER_NO_FK,
+                                        INVOICEDTL_NO_FK,
+                                        ITEM_NO_FK,
+                                        ITEM_NAME,
+                                        ITEMTYPE_NO_FK,
+                                        ITEM_QTY,
+                                        ITEM_RATE,
+                                        ITEM_VAT,
+                                        URGENT_FEE,
+                                        SERVICE_CHARGE,
+                                        PACKAGE_ITEM_IND,
+                                        PURCHASE_RATE,
+                                        TRN_TYPE_NO_FK,
+                                        LEDGERDTL_AMT_SALES,
+                                        LEDGERDTL_AMT_PAYMENT,
+                                        LEDGERDTL_AMT_DISCOUNT,
+                                        DISC_AMT_BY_DOC,
+                                        DISC_AMT_BY_HOSP,
+                                        REF_DISC_AMT,
+                                        ITEM_LEVEL_DIST_ADJ_AMT,
+                                        ITEM_PAID_AMT,
+                                        ITEM_PAID_PERCENT,
+                                        ITEM_DISC_AMT,
+                                        ITEM_DISC_PERCENT,
+                                        STATUS,
+                                        AU_ENTRY_BY,
+                                        AU_ENTRY_AT,
+                                        AU_ENTRY_SESSION,
+                                        AU_ENTRY_HOSPITAL_PK_NO)
+                 VALUES (l_ledgerdtl_no_pk,
+                         SYSDATE,
+                         l_ledger_no_pk,
+                         l_invoicedtl_no_pk,
+                         in_item_no_fk (l_item_count),
+                         in_item_name (l_item_count),
+                         in_itemtype_no_fk (l_item_count),
+                         in_item_qty (l_item_count),
+                         in_item_rate (l_item_count),
+                         in_item_vat (l_item_count),
+                         in_URGENT_FEE (l_item_count),
+                         in_SERVICE_CHARGE (l_item_count),
+                         in_PACKAGE_ITEM_IND (l_item_count),
+                         l_purchase_rate,
+                         l_trn_type_no_fk,
+                         l_ledgerdtl_amt_sales,
+                         l_ledgerdtl_amt_payment,
+                         l_ledgerdtl_amt_discount,
+                         l_disc_amt_by_doc,
+                         l_disc_amt_by_hosp,
+                         l_ref_disc_amt,
+                         l_item_level_dist_adj_amt,
+                         l_item_paid_amt,
+                         l_item_paid_percent,
+                         l_item_disc_amt,
+                         l_item_disc_percent,
+                         1,
+                         in_au_entry_by,
+                         SYSDATE,
+                         in_au_entry_session,
+                         in_au_entry_hospital_pk_no);
+
+
+            --- Radiology and Laboratory OT Data Creation---Start
+
+            DBMS_OUTPUT.put_line (
+                  '98 '
+               || l_item_count
+               || ' '
+               || in_ITEM_NO_FK (l_item_count)
+               || ' '
+               || in_item_name (l_item_count));
+
+            BEGIN
+               IF l_item_type = 'RAD'
+               THEN
+                  BEGIN
+                     SELECT radinvoicedtl_no_pk_seq.NEXTVAL
+                       INTO l_rabinvoicedtl_no_pk
+                       FROM DUAL;
+
+                     SELECT RAD_REPORT_NO_PK_SEQ.NEXTVAL
+                       INTO l_RAD_REPORT_NO_PK
+                       FROM DUAL;
+
+                     l_ACCESSION_ID :=
+                           TO_CHAR (SYSDATE, 'yyyymmdd')
+                        || LPAD (l_rabinvoicedtl_no_pk, '0', 5);
+
+                     INSERT INTO RADT_INVOICEDTL (RADINVOICEDTL_NO_PK,
+                                                  INVOICE_NO_FK,
+                                                  INVOICE_CODE,
+                                                  INVOICEDTL_NO_FK,
+                                                  ACCESSION_ID,
+                                                  ITEM_NO_FK,
+                                                  DELIVERY_STATUS_NO_FK,
+                                                  PRESCRIPTION_NO_FK,
+                                                  PATIENT_NO_FK,
+                                                  PRIORITY_NAME,
+                                                  AGE,
+                                                  STATUS,
+                                                  AU_ENTRY_BY,
+                                                  AU_ENTRY_AT,
+                                                  AU_ENTRY_SESSION,
+                                                  AU_ENTRY_HOSPITAL_PK_NO)
+                             VALUES (
+                                       l_rabinvoicedtl_no_pk,
+                                       l_invoice_no_pk,
+                                       l_invoice_code,
+                                       l_INVOICEDTL_NO_PK,
+                                       l_ACCESSION_ID,
+                                       in_ITEM_NO_FK (l_item_count),
+                                       in_DELIVERY_STATUS_LOOKUP_NO_FK (
+                                          l_item_count),
+                                       in_prescription_no_fk,
+                                       l_patient_no_pk,
+                                       NULL,
+                                       NULL,
+                                       1,
+                                       in_au_entry_by,
+                                       SYSDATE,
+                                       in_au_entry_session,
+                                       in_au_entry_hospital_pk_no);
+
+                     --    dbms_output.put_line('99 ' || l_ACCESSION_ID || ' ' || l_rabinvoicedtl_no_pk || ' ' || in_ITEM_NO_FK(l_item_count) );
+                     INSERT INTO RADT_REPORTING (RAD_REPORT_NO_PK,
+                                                 RAD_REPORT_UID,
+                                                 RADINVOICEDTL_NO_FK,
+                                                 INVOICE_NO_FK,
+                                                 INVOICEDTL_NO_FK,
+                                                 STATUS,
+                                                 AU_ENTRY_BY,
+                                                 AU_ENTRY_AT,
+                                                 AU_ENTRY_SESSION,
+                                                 AU_ENTRY_HOSPITAL_NO_FK)
+                          VALUES (l_RAD_REPORT_NO_PK,
+                                  l_ACCESSION_ID,
+                                  l_rabinvoicedtl_no_pk,
+                                  l_invoice_no_pk,
+                                  l_invoicedtl_no_pk,
+                                  1,
+                                  in_au_entry_by,
+                                  SYSDATE,
+                                  in_au_entry_session,
+                                  in_au_entry_hospital_pk_no);
+                  EXCEPTION
+                     WHEN OTHERS
+                     THEN
+                        DBMS_OUTPUT.put_line (
+                           '100 ' || l_ACCESSION_ID || SQLERRM);
+                  END;
+               ELSIF l_item_type = 'LAB'
+               THEN
+                  BEGIN
+                     SELECT pathinvoicedtl_no_pk_seq.NEXTVAL
+                       INTO l_pathinvoicedtl_no_pk
+                       FROM DUAL;
+
+                     -- l_ACCESSION_ID := to_char(sysdate,'yyyymmdd') || lpad(l_rabinvoicedtl_no_pk,'0',5);
+
+                     INSERT INTO LABT_INVOICEDTL (PATHINVOICEDTL_NO_PK,
+                                                  INVOICE_NO_FK,
+                                                  INVOICE_CODE,
+                                                  INVOICEDTL_PK_NO,
+                                                  LAB_NO_FK,
+                                                  LAB_CODE,
+                                                  ITEM_NO_FK,
+                                                  SAM_NO_FK,
+                                                  SC_TOT_NO_OF_COLL,
+                                                  SC_REQ_NO_OF_COLL,
+                                                  STAMP_NO_FK,
+                                                  DELIVERY_STATUS_NO,
+                                                  ANALYZER_NO_FK,
+                                                  prescription_no_fk,
+                                                  patient_no_fk,
+                                                  STATUS,
+                                                  AU_ENTRY_BY,
+                                                  AU_ENTRY_AT,
+                                                  AU_ENTRY_SESSION,
+                                                  AU_ENTRY_HOSPITAL_PK_NO)
+                             VALUES (
+                                       l_pathinvoicedtl_no_pk,
+                                       l_invoice_no_pk,
+                                       l_invoice_code,
+                                       l_INVOICEDTL_NO_PK,
+                                       NULL,
+                                       NULL,
+                                       in_ITEM_NO_FK (l_item_count),
+                                       l_sam_no_fk,
+                                       l_sc_tot_no_of_coll,
+                                       l_sc_tot_no_of_coll,
+                                       NULL,
+                                       in_DELIVERY_STATUS_LOOKUP_NO_FK (
+                                          l_item_count),
+                                       NULL,
+                                       in_prescription_no_fk,
+                                       l_patient_no_pk,
+                                       1,
+                                       in_au_entry_by,
+                                       SYSDATE,
+                                       in_au_entry_session,
+                                       in_au_entry_hospital_pk_no);
+                  --dbms_output.put_line('97 ' || l_pathinvoicedtl_no_pk || ' ' || in_ITEM_NO_FK(l_item_count));
+
+                  EXCEPTION
+                     WHEN OTHERS
+                     THEN
+                        DBMS_OUTPUT.put_line (
+                           '101 ' || l_pathinvoicedtl_no_pk || SQLERRM);
+                  END;
+               ELSIF l_item_type = 'SUR'
+               THEN
+                  /*
+                                          BEGIN
+                                              SELECT item_name INTO l_s_item_name FROM SYS_SERVICEITEM WHERE ITEM_NO_PK = rec.LOOKUPDATA_ITEM_NO_FK;
+                                          EXCEPTION
+                                              WHEN OTHERS THEN
+                                                      l_s_item_name := 'No Item Name';
+                                          END;
+                  */
+
+                  SELECT OT_REQ_NO_PK_SEQ.NEXTVAL
+                    INTO l_OT_REQ_NO_PK_SEQ
+                    FROM DUAL;
+
+
+                  INSERT INTO OPT_PRESCRIBED_OT (OT_REQ_NO_PK,
+                                                 OT_REQ_UID,
+                                                 OT_REQ_DATE,
+                                                 ADMISSION_NO_FK,
+                                                 ADMISSION_UID,
+                                                 PRIMARY_DOCTOR_NO_FK,
+                                                 PRESCRIPTION_NO_FK,
+                                                 PATIENT_NO_FK,
+                                                 SERVICE_NUMBER,
+                                                 PAT_RANK,
+                                                 PAT_UNIT,
+                                                 ITEM_NO_FK,
+                                                 ITEM_NAME,
+                                                 STATUS,
+                                                 AU_ENTRY_BY,
+                                                 AU_ENTRY_AT,
+                                                 AU_ENTRY_SESSION,
+                                                 AU_ENTRY_HOSPITAL_NO_FK,
+                                                 INVOICE_NO_FK,
+                                                 INVOICE_CODE,
+                                                 INVOICEDTL_PK_NO)
+                       VALUES (l_OT_REQ_NO_PK_SEQ,
+                               l_OT_REQ_NO_PK_SEQ,
+                               SYSDATE,
+                               in_admission_no_pk,
+                               in_admission_code,
+                               NULL,
+                               in_prescription_no_fk,
+                               l_patient_no_pk,
+                               in_patient_code,
+                               NULL,
+                               NULL,
+                               in_ITEM_NO_FK (l_item_count),
+                               in_ITEM_NAME (l_item_count),
+                               1,
+                               in_au_entry_by,
+                               SYSDATE,
+                               in_au_entry_session,
+                               in_au_entry_hospital_pk_no,
+                               l_invoice_no_pk,
+                               l_invoice_code,
+                               l_INVOICEDTL_NO_PK);
+               END IF;
+            END;
+         --- Radiology and Laboratory Data Creation---End
+
+         END LOOP;
+      END IF;
+
+      UPDATE FINC_LEDGERMST
+         SET LEDGER_AMT_SALES = l_total_sales_amt
+       WHERE     LEDGER_NO_PK = l_ledger_no_pk
+             AND AU_ENTRY_HOSPITAL_PK_NO = in_au_entry_hospital_pk_no;
+
+      out_invoice_no := l_invoice_no_pk;
+      out_invoice_id := l_invoice_code;
+      out_error := '000';
+   -- commit;
+   EXCEPTION
+      WHEN OTHERS
+      THEN
+         out_invoice_no := l_invoice_no_pk;
+         out_error := '999' || SQLERRM;
+   END prc_billinvoice;
+
+
